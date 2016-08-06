@@ -1,4 +1,5 @@
-import Geometry as Geometry
+#import Geometry as Geometry
+import sympy.geometry as symgeo
 
 
 class Mesh:
@@ -29,7 +30,7 @@ class Mesh:
                 a = []  # dummy list
                 for token in next(f).split():  # split coordinates.
                     a.append(float(token))
-                self.point.append(Point(a[1:], self))  # ignoring first char.
+                self.point.append(Point(x=a[1], y=a[2], parent_mesh=self))  # ignoring first char.
             # read number of elements
             for line in f:
                 if '$Elements' in line:
@@ -60,7 +61,8 @@ class Mesh:
                     wall = False  # so adjust physical number accordingly when creating GMSH file.
                     if a[3] == 1:
                         wall = True
-                    self.bface.append(BoundaryFace(Geometry.Line([shape for shape in point]), point, wall, self))
+                    #self.bface.append(BoundaryFace(Geometry.Line([shape for shape in point]), point, wall, self))
+                    self.bface.append(BoundaryFace(symgeo.Line(point[0].shape, point[1].shape), point, wall, self))
                 elif a[1] == 3:  # quad
                     # read last four entries.
                     point = list()
@@ -68,7 +70,8 @@ class Mesh:
                     point.append(self.point[a[-3] - 1])  # -1 because GMSH has base 1.
                     point.append(self.point[a[-2] - 1])  # -1 because GMSH has base 1.
                     point.append(self.point[a[-1] - 1])  # -1 because GMSH has base 1.
-                    self.cell.append(Cell(Geometry.Quad([shape for shape in point]), point, self))
+                    #self.cell.append(Cell(Geometry.Quad([shape for shape in point]), point, self))
+                    self.cell.append(Cell(symgeo.Polygon(point[0].shape, point[1].shape, point[2].shape, point[3].shape), point, self))
 
     def print_vtk(self, file_name):
         """
@@ -88,19 +91,19 @@ class Mesh:
 
         # write points
         for p in self.point:
-            for i in p.shape.coor:
-                f.write('%s ' % i)
+            f.write('%s ' % p.shape.x)
+            f.write('%s ' % p.shape.y)
             f.write('\n')
 
         # write cell list size
         celllistsize = 0
         for i in self.cell:
-            celllistsize += i.shape.n_vertex + 1
+            celllistsize += len(i.shape.args) + 1
         f.write('CELLS %i %i\n' % (len(self.cell), celllistsize))
 
         # write cell vertices
         for i in self.cell:
-            f.write('%s ' % i.shape.n_vertex)
+            f.write('%s ' % len(i.shape.args))
             for v in i.point:
                 f.write('%s ' % self.point.index(v))
             f.write('\n')
@@ -108,7 +111,7 @@ class Mesh:
         # write cell types
         f.write('CELL_TYPES %i\n' % len(self.cell))
         for cell in self.cell:
-            if isinstance(cell.shape, Geometry.Quad):  # check if cell shape is quad.
+            if len(cell.shape.args) == 4:  # check if cell shape is quad.
                 f.write('%i\n' % 9)
 
     def topology_connectivity(self):
@@ -148,8 +151,8 @@ class Mesh:
                             if sig == len(face) - 1:  # '-1' because we start from the second vertex to count matches.
                                 cell.nei.append(parent_cell)
                                 parent_cell.nei.append(cell)
-                                if isinstance(cell.shape, Geometry.Quad):
-                                    shape = Geometry.Line
+                                if len(cell.shape.args) == 4:  # check if the shape is quad.
+                                    shape = symgeo.Line(face[0].shape, face[1].shape)
                                 self.iface.append(InteriorFace(shape, face, self))
                                 cell.iface.append(self.iface[-1])
                                 parent_cell.iface.append(self.iface[-1])
@@ -209,7 +212,7 @@ class Cell:
         :return:
         """
         faces = list()  # list of faces which holds lists of vertices.
-        if isinstance(self.shape, Geometry.Quad):
+        if len(self.shape.args) == 4:  # check if the shape is quad.
             face = list()  # list of vertices.
             face.append(self.point[0])
             face.append(self.point[1])
@@ -233,15 +236,17 @@ class Cell:
 
 
 class Point:
-    def __init__(self, coor, parent_mesh):
-        self.shape = Geometry.Point(coor)  # geometric shape.
+    def __init__(self, x, y, parent_mesh):
+        self.x = x
+        self.y = y
+        self.shape = symgeo.Point(x, y)
         self.parent_mesh = parent_mesh  # the mesh to which point belongs to.
         self.parent_cell = list()  # the cell to which point belongs to.
         self.parent_bface = list()  # the boundary face to which point belongs to if any.
         self.parent_iface = list()  # the interior face to which point belongs to if any.
 
     def __eq__(self, other):
-        return self.shape.coor == other.shape.coor
+        return self.x == other.x and self.y == other.y
 
 
 
