@@ -1,14 +1,14 @@
-import MeshElement as MeshElement
 import Geometry as Geometry
 
 
 class Mesh:
     def __init__(self, file_name):
-        self.point = list()
-        self.cell = list()
-        self.bface = list()
-        self.iface = list()
+        self.point = list()  # list of points.
+        self.cell = list()  # list of cells.
+        self.bface = list()  # list of boundary faces.
+        self.iface = list()  # list of interior faces.
         self.read_gmsh(file_name)
+        self.topology_connectivity()
 
     def read_gmsh(self, file_name):
         """
@@ -29,7 +29,7 @@ class Mesh:
                 a = []  # dummy list
                 for token in next(f).split():  # split coordinates.
                     a.append(float(token))
-                self.point.append(MeshElement.Point(a[1:], self))  # ignoring first char.
+                self.point.append(Point(a[1:], self))  # ignoring first char.
             # read number of elements
             for line in f:
                 if '$Elements' in line:
@@ -60,7 +60,7 @@ class Mesh:
                     wall = False  # so adjust physical number accordingly when creating GMSH file.
                     if a[3] == 1:
                         wall = True
-                    self.bface.append(MeshElement.BoundaryFace(Geometry.Line([shape for shape in point]), point, wall, self))
+                    self.bface.append(BoundaryFace(Geometry.Line([shape for shape in point]), point, wall, self))
                 elif a[1] == 3:  # quad
                     # read last four entries.
                     point = list()
@@ -68,7 +68,7 @@ class Mesh:
                     point.append(self.point[a[-3] - 1])  # -1 because GMSH has base 1.
                     point.append(self.point[a[-2] - 1])  # -1 because GMSH has base 1.
                     point.append(self.point[a[-1] - 1])  # -1 because GMSH has base 1.
-                    self.cell.append(MeshElement.Cell(Geometry.Quad([shape for shape in point]), point, self))
+                    self.cell.append(Cell(Geometry.Quad([shape for shape in point]), point, self))
 
     def print_vtk(self, file_name):
         """
@@ -111,48 +111,139 @@ class Mesh:
             if isinstance(cell.shape, Geometry.Quad):  # check if cell shape is quad.
                 f.write('%i\n' % 9)
 
-
-    def cell_to_cell_connect(self):
+    def topology_connectivity(self):
+        """
+        Establish cell-to-cell, face-to-cell connectivity of mesh. Create interior faces.
+        :return:
+        """
         # loop through cells.
         for cell in self.cell:
             faces = cell.set_face_vertices()
             # loop through points of faces.
             # note that 'faces' is not assigned to the cell yet.
             for face in faces:
-                # loop though bfaces that the first point belongs to.
-                for parent_bface in face.point[0].parent_bface:
-                    # count number of parent bfaces other points of the face belongs to.
-                    sig = 0
-                    for point in face.point[1:]:  # do not consider the first face point.
-                        sig += point.parent_bface.count(parent_bface.tag)
-                    if sig == len(face.point) - 1:  # '-1' because we start from the second vertex to count matches.
-                        cell.bface.append(bface)
-                        bface.parent_cell.append(cell)
-                        break  # looping though bfaces of the first face vertex.
-                continue  # with the next face as we are done with the current one.
-
-                for parent_cell in face.point[0].parent_cell:
-                    if parent_cell == cell:
-
-
-                        # count number of parent cells other points of the face belongs to.
+                if face[0].parent_bface:  # needed to use continue statement.
+                    # loop though bfaces that the first face vertex belongs to.
+                    for parent_bface in face[0].parent_bface:  # face[0] is the first face vertex.
+                        # count number of parent bfaces other points of the face belongs to.
                         sig = 0
-                        for point in face.point[1:]:  # do not consider the first face point.
-                            sig += point.parent_cell.count(parent_cell.tag)
+                        for point in face[1:]:  # do not consider the first face point.
+                            if parent_bface in point.parent_bface:
+                                sig += 1
+                        if sig == len(face) - 1:  # '-1' because we start from the second vertex to count matches.
+                            cell.bface.append(parent_bface)
+                            parent_bface.parent_cell.append(cell)
+                            break  # looping though bfaces of the first face vertex.
+                    continue  # with the next face as we are done with the current one.
 
-                        if (std: :
-                            find(cell[c].nei.begin(), cell[c].nei.end(), nei) != pt[n].cellTag.end())
-                        {
-                        // which
-                        means
-                        that
-                        this
-                        nei is already
-                        checked
-                        for this face.
-                            continue; // with the next cell belonging.
-                        }
-                        }
+                # loop through parent cells of the face vertex.
+                for parent_cell in face[0].parent_cell:
+                    # make sure that parent cell is not the current cell.
+                    if parent_cell != cell:
+                        # check if this parent cell is already processed.
+                        if parent_cell not in cell.nei:
+                            sig = 0
+                            for point in face[1:]:  # do not consider the first face point.
+                                sig += point.parent_cell.count(parent_cell)
+                            if sig == len(face) - 1:  # '-1' because we start from the second vertex to count matches.
+                                cell.nei.append(parent_cell)
+                                parent_cell.nei.append(cell)
+                                if isinstance(cell.shape, Geometry.Quad):
+                                    shape = Geometry.Line
+                                self.iface.append(InteriorFace(shape, face, self))
+                                cell.iface.append(self.iface[-1])
+                                parent_cell.iface.append(self.iface[-1])
+                                break  # looping though parent cells of the first face vertex.
+
+
+class Face:
+    def __init__(self, shape, point, parent_mesh):
+        self.shape = shape  # the geometric shape of the face.
+        self.parent_mesh = parent_mesh  # the mesh to which face belongs to.
+        self.parent_cell = list()  # the cell to which face belongs to.
+        self.point = point  # list of face vertices.
+
+    def __eq__(self, other):
+        return self.point == other.point
+
+
+class BoundaryFace(Face):
+    def __init__(self, shape, point, wall, parent_mesh):
+        self.wall = wall  # boolean to indicate whether boundary face is a wall.
+        # set this boundary face as parent of its vertices.
+        for p in point:
+            if p.parent_bface is not None:
+                p.parent_bface.append(self)
+        super(BoundaryFace, self).__init__(shape, point, parent_mesh)
+
+
+class InteriorFace(Face):
+    def __init__(self, shape, point, parent_mesh):
+        # set this interior face as parent of its vertices.
+        for p in point:
+            if p.parent_iface is not None:
+                p.parent_iface.append(self)
+        super(InteriorFace, self).__init__(shape, point, parent_mesh)
+
+
+class Cell:
+    def __init__(self, shape, point, parent_mesh):
+        self.parent_mesh = parent_mesh  # the mesh to which the cell belongs to.
+        self.shape = shape  # geometric shape of the cell.
+        self.point = point  # list of cell vertices.
+        self.bface = list()  # list of cell boundary faces if any.
+        self.iface = list()  # list of cell interior faces.
+        self.nei = list()  # list of cell neighbors.
+        # set this cell as parent of its vertices.
+        for p in point:
+            if p.parent_cell is not None:
+                p.parent_cell.append(self)
+
+    def __eq__(self, other):
+        return self.point == other.point
+
+    def set_face_vertices(self):
+        """
+        Determine vertices of cell faces with GMSH convention.
+        Do not modify cell faces but returns a new list.
+        :return:
+        """
+        faces = list()  # list of faces which holds lists of vertices.
+        if isinstance(self.shape, Geometry.Quad):
+            face = list()  # list of vertices.
+            face.append(self.point[0])
+            face.append(self.point[1])
+            faces.append(face)
+
+            face = list()
+            face.append(self.point[1])
+            face.append(self.point[2])
+
+            face = list()
+            face.append(self.point[2])
+            face.append(self.point[3])
+
+            face = list()
+            face.append(self.point[3])
+            face.append(self.point[0])
+
+            return faces
+
+        return None
+
+
+class Point:
+    def __init__(self, coor, parent_mesh):
+        self.shape = Geometry.Point(coor)  # geometric shape.
+        self.parent_mesh = parent_mesh  # the mesh to which point belongs to.
+        self.parent_cell = list()  # the cell to which point belongs to.
+        self.parent_bface = list()  # the boundary face to which point belongs to if any.
+        self.parent_iface = list()  # the interior face to which point belongs to if any.
+
+    def __eq__(self, other):
+        return self.shape.coor == other.shape.coor
+
+
 
 
 
