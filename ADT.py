@@ -31,17 +31,19 @@ class AABB:
             self.r_min = list()
             self.r_max = list()
 
-            for _ in dim:
+            for _ in range(dim):
                 self.r_min.append(1e6)
                 self.r_max.append(-1e6)
-
+            print(point)
             # loop through points to update variables.
             if point:
-                for p in point:
-                    for _ in dim:
-                        self.r_min[_] = min(self.r_min[_], p[_])
-                        self.r_max[_] = max(self.r_max[_], p[_])
-                for _ in dim:
+                for e in point:  # element (polygon) in the list.
+                    for p in e:  # point in polygon.
+                        for _ in range(dim):
+
+                            self.r_min[_] = min(self.r_min[_], p[_])
+                            self.r_max[_] = max(self.r_max[_], p[_])
+                for _ in range(dim):
                     self.r.append(self.r_min[_])
                     self.r.append(self.r_max[_])
 
@@ -77,16 +79,18 @@ class ADT:
         self.dim = dim
         self.n_var = 2 * dim
         self.root = None
+        self.point = point
+        self.build(point)
 
     def build(self, point):
         if self.root is None:
             root_aabb = AABB(point, self.dim)  # construct AABB of whole region.
-            self.root = self.Node(level=0, key=None, adt_point=self.ADTPoint(point[0]), aabb=root_aabb)
+            self.root = ADTNode(level=0, key=None, adt_point=ADTPoint(point[0], 0, self.dim), aabb=root_aabb)
 
             # insert the rest of the points to the tree.
             for p in point:
                 child_dim = self.root.level % self.n_var
-                self.insert(node=self.root, adt_point=self.ADTPoint(p), node_dim=child_dim)
+                self.insert(node=self.root, adt_point=ADTPoint(p), node_dim=child_dim)
 
     def insert(self, node, adt_point, node_dim):
         """
@@ -180,35 +184,37 @@ class ADT:
                 self.search_(self.search_stack.pop())
                 # pop() removes and at the same time return the last element of search_stack.
 
-    class Node:
-        def __init__(self, level, key, adt_point, aabb):
-            self.key = key
-            self.left = None
-            self.right = None
-            self.level = level
-            self.adt_point = adt_point
-            self.aabb = aabb  # aabb of the region which this node represents.
 
-    class ADTPoint:
-        def __init__(self, point, tag):
-            self.point = point
-            self.tag = tag
-            self.aabb = AABB(point, self.dim)  # aabb of the element.
+class ADTNode:
+    def __init__(self, level, key, adt_point, aabb):
+        self.key = key
+        self.left = None
+        self.right = None
+        self.level = level
+        self.adt_point = adt_point
+        self.aabb = aabb  # aabb of the region which this node represents.
 
-        def true_overlap(self, other):
-            # convert list: [[1,2], [3,4], [5,6]] to tuple: [(1,2), (3,4), (5,6)]
-            point_tuple_self = list()
-            for p in self.point:
-                point_tuple_self.append(tuple(p))
 
-            point_tuple_other = list()
-            for p in other.point:
-                point_tuple_other.append(tuple(p))
+class ADTPoint:
+    def __init__(self, point, tag, dim):
+        self.point = point
+        self.tag = tag
+        self.aabb = AABB(point, dim)  # aabb of the element.
 
-            poly_self = symgeo.Polygon(point_tuple_self)
-            poly_other = symgeo.Polygon(point_tuple_other)
+    def true_overlap(self, other):
+        # convert list: [[1,2], [3,4], [5,6]] to tuple: [(1,2), (3,4), (5,6)]
+        point_tuple_self = list()
+        for p in self.point:
+            point_tuple_self.append(tuple(p))
 
-            return poly_self.intersection(poly_other)
+        point_tuple_other = list()
+        for p in other.point:
+            point_tuple_other.append(tuple(p))
+
+        poly_self = symgeo.Polygon(point_tuple_self)
+        poly_other = symgeo.Polygon(point_tuple_other)
+
+        return poly_self.intersection(poly_other)
 
 
 
