@@ -1,6 +1,34 @@
 import sympy.geometry as symgeo
-from pyrr import Quaternion, Matrix44, Vector3
-import numpy as np
+
+class OBB:
+    """
+    Oriented bounding box. This is a wrapper around sympy.geometry.convex_hull.
+    OBB is extracted after estimation of convex_hull.
+    Only for 2D.
+    """
+    def __init__(self, dim, polygon=None, point=None):
+        """
+        Construct OBB from either the polygon which represents the convex hull or from a list of point.
+        :param polygon: the sympy.geometry.Polygon which represents the convex hull of a set of points.
+        :param point: list of sympy,geometry.Point.
+        :modify: if successful diagonal coordinates of OBB where
+                 r[0]: x_min
+                 r[1]: y_min
+                 r[2]: x_max
+                 r[3]: y_max.
+        :error: if dim is not 2 or both polygon and point are None raise ValueError.
+        """
+
+        if dim != 2:
+            raise ValueError('only 2D is supported.')
+        if point is None and polygon is not None:
+            for _ in range(2*dim):
+                self.r.append(polygon.bounds[_])
+        elif point is not None and polygon is None:
+            symgeo.convex_hull(point)
+        else:
+            raise ValueError('both polygon and point are None.')
+
 
 class AABB:
     """
@@ -45,7 +73,7 @@ class AABB:
                         for _ in range(dim):
 
                             self.r_min[_] = min(self.r_min[_], p[_])
-                            self.r_max[_] = max(self.r_max[_], p[_])-
+                            self.r_max[_] = max(self.r_max[_], p[_])
                 for _ in range(dim):
                     self.r.append(self.r_min[_])
                     self.r.append(self.r_max[_])
@@ -97,6 +125,124 @@ class ADT:
         """
         Insert point into root or one of its descendant nodes. Inserting objects one by one allows distinct shapes to
         exist in the tree.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         :param point: list of sympy.Point. If the list contains only one element,
         then it is a sympy.Point. If multiple elements are provided then it represents other geometries such sympy.Polygon.
         :return: True if the point is inserted into any node.
