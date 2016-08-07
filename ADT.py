@@ -1,13 +1,16 @@
 import sympy.geometry as symgeo
+from pyrr import Quaternion, Matrix44, Vector3
+import numpy as np
 
 class AABB:
     """
-    Construct axis-aligned bounding box.
+    Axis-aligned bounding box.
     """
     def __init__(self, point, dim, r_min=None, r_max=None):
         """
-        Construct AABB with given points.
+        Construct AABB with given points or lower and upper coordinates.
         :param point: list of list of coordinates. example: [[1.5, 2.7], [4.1, 6.7], [7.5, 7.2]]
+        :param point: list of sympy.Point. example: [Point(1.5, 2.7), Point(4.1, 6.7), Point(7.5, 7.2)]
         """
         # initialize variables.
         # r_min[0]: x_min
@@ -42,7 +45,7 @@ class AABB:
                         for _ in range(dim):
 
                             self.r_min[_] = min(self.r_min[_], p[_])
-                            self.r_max[_] = max(self.r_max[_], p[_])
+                            self.r_max[_] = max(self.r_max[_], p[_])-
                 for _ in range(dim):
                     self.r.append(self.r_min[_])
                     self.r.append(self.r_max[_])
@@ -69,20 +72,18 @@ class AABB:
 
 
 class ADT:
-    def __init__(self, dim, point):
+    def __init__(self, dim):
         """
-        :param dim:
-        :param point: list of elements which holds list of points which holds list of coordinates. elements could be
-        of any geometric shape.
-        example: [[[1.5, 2.7], [4.1, 6.7], [7.5, 7.2]], [[1.5, 2.7], [4.1, 6.7], [7.5, 7.2]]]
+        :param dim: Spatial dimension.
         """
         self.dim = dim
         self.n_var = 2 * dim
         self.root = None
-        self.point = point
-        self.build(point)
 
     def build(self, point):
+        """
+        Depreciated.
+        """
         if self.root is None:
             root_aabb = AABB(point, self.dim)  # construct AABB of whole region.
             self.root = ADTNode(level=0, key=None, adt_point=ADTPoint(point[0], 0, self.dim), aabb=root_aabb)
@@ -92,13 +93,34 @@ class ADT:
                 child_dim = self.root.level % self.n_var
                 self.insert(node=self.root, adt_point=ADTPoint(p), node_dim=child_dim)
 
-    def insert(self, node, adt_point, node_dim):
+    def insert(self, point):
         """
-        Insert adt_point into one of the descendants of the node.
+        Insert point into root or one of its descendant nodes. Inserting objects one by one allows distinct shapes to
+        exist in the tree.
+        :param point: list of sympy.Point. If the list contains only one element,
+        then it is a sympy.Point. If multiple elements are provided then it represents other geometries such sympy.Polygon.
+        :return: True if the point is inserted into any node.
+                 True/False depending on insert_.
+
+        """
+        if self.root is None:
+            root_aabb = AABB(point, self.dim)  # construct AABB of whole region.
+            self.root = ADTNode(level=0, key=None, adt_point=ADTPoint(point[0], 0, self.dim), aabb=root_aabb)
+            return True
+        else:
+            child_dim = self.root.level % self.n_var
+            return self.insert_(node=self.root, adt_point=ADTPoint(point), node_dim=child_dim)
+
+    def insert_(self, node, adt_point, node_dim):
+        """
+        Insert adt_point into one of the descendants of the node. Do not call this function explicitly. It meant to be
+        called in self.insert(self, point).
         :param node:
         :param adt_point:
         :param node_dim: one of the dimensions.
-        :return: nothing.
+        :return: True if adt_point is inserted to one of the children of this node.
+                 True/False depending on recursive call.
+                 False if the adt_point is not inserted to any node.
         """
         # set level of the children.
         child_level = node.level + 1
@@ -127,9 +149,10 @@ class ADT:
                 node_aabb = AABB(r_min, r_max, self.dim)
                 # construct child node. adt_point is assigned to this child.
                 node.left = self.Node(level=child_level, key=key, adt_point=adt_point, aabb=node_aabb)
+                return True
             else:
                 # insert adt_point into one of the descendants of the left child.
-                self.insert(node=node.left, adt_point=adt_point, node_dim=grand_child_dim)
+                return self.insert(node=node.left, adt_point=adt_point, node_dim=grand_child_dim)
         else:
             if node.right is None:
                 # set AABB of the region the child node represents.
@@ -146,9 +169,11 @@ class ADT:
                 node_aabb = AABB(r_min, r_max, self.dim)
                 # construct child node. adt_point is assigned to this child.
                 node.right = self.Node(level=child_level, key=key, adt_point=adt_point, aabb=node_aabb)
+                return True
             else:
                 # insert adt_point into one of the descendants of the right child.
-                self.insert(node=node.right, adt_point=adt_point, node_dim=grand_child_dim)
+                return self.insert(node=node.right, adt_point=adt_point, node_dim=grand_child_dim)
+        return False
 
     def search_children(self, node, adt_point):
         """
