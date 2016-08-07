@@ -1,4 +1,3 @@
-#import Geometry as Geometry
 import sympy.geometry as symgeo
 
 

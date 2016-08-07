@@ -1,8 +1,10 @@
+import sympy.geometry as symgeo
+
 class AABB:
     """
     Construct axis-aligned bounding box.
     """
-    def __init__(self, point, dim):
+    def __init__(self, point, dim, r_min=None, r_max=None):
         """
         Construct AABB with given points.
         :param point: list of list of coordinates. example: [[1.5, 2.7], [4.1, 6.7], [7.5, 7.2]]
@@ -12,30 +14,56 @@ class AABB:
         # r_min[1]: y_min
         # r_max[0]: x_max
         # r_max[1]: y_max
-        self.r = list()
-        self.r_min = list()
-        self.r_max = list()
 
-        for _ in dim:
-            self.r_min.append(1e6)
-            self.r_max.append(-1e6)
+        if dim < 1 or dim > 3:
+            raise ValueError('invalid dimension')
 
-        # loop through points to update variables.
-        if point:
-            for p in point:
-                for _ in dim:
-                    self.r_min[_] = min(self.r_min[_], p[_])
-                    self.r_max[_] = max(self.r_max[_], p[_])
+        self.dim = dim
+
+        if r_min is not None and r_max is not None:
+            self.r_min = r_min
+            self.r_max = r_max
             for _ in dim:
                 self.r.append(self.r_min[_])
                 self.r.append(self.r_max[_])
-
         else:
-            raise ValueError('point is empty')
+            self.r = list()
+            self.r_min = list()
+            self.r_max = list()
 
-    def __init__(self, r_min, r_max, dim):
-        self.r_min = r_min
-        self.r_max = r_max
+            for _ in dim:
+                self.r_min.append(1e6)
+                self.r_max.append(-1e6)
+
+            # loop through points to update variables.
+            if point:
+                for p in point:
+                    for _ in dim:
+                        self.r_min[_] = min(self.r_min[_], p[_])
+                        self.r_max[_] = max(self.r_max[_], p[_])
+                for _ in dim:
+                    self.r.append(self.r_min[_])
+                    self.r.append(self.r_max[_])
+
+            else:
+                raise ValueError('point is empty')
+
+    def overlap(self, other):
+        """
+        Evaluate overlap of two AABBs.
+        :param other:
+        :return: False if no overlap.
+                 True by default.
+                 Error if dimensions do not match.
+        """
+        if self.dim != other.dim:
+            return ValueError('dimensions do not match.')
+        for d in self.dim:
+            if self.r_min[d] > other.r_max[d]:  # self's left (bottom) edge is to the right (above) of other's right (top) edge.
+                return False
+            if self.r_max[d] < other.r_min[d]:  # self's right (top) edge is to the left (below) of other's left (bottom) edge.
+                return False
+        return True
 
 
 class ADT:
@@ -118,6 +146,40 @@ class ADT:
                 # insert adt_point into one of the descendants of the right child.
                 self.insert(node=node.right, adt_point=adt_point, node_dim=grand_child_dim)
 
+    def search_children(self, node, adt_point):
+        """
+        Evaluate overlap of AABB of node's children' and of adt_point. Add overlapping children to search_stack.
+        :param node:
+        :param adt_point:
+        :return:
+        """
+        if node.left is not None:
+            # check whether AABB of child and of adt_point overlap.
+            if adt_point.aabb.overlap(self.node.left.aabb):
+                self.search_stack.append(node.left)
+
+        if node.right is not None:
+            # check whether AABB of child and of adt_point overlap.
+            if adt_point.aabb.overlap(self.node.right.aabb):
+                self.search_stack.append(node.right)
+
+    def search(self, node, adt_point):
+        # check whether AABB of root and of adt_point overlap.
+        if adt_point.aabb.overlap(self.root.aabb):
+            self.search_(self.root, adt_point)
+
+    def search_(self, node, adt_point):
+        # check whether AABB of node's adt_point and adt_point of interest overlap.
+        if adt_point.aabboverlap(node.adt_point.aabb):
+            # check true overlap.
+            if node.adt_point.true_overlap(adt_point):
+                return True, node.adt_point.tag
+            else:
+                # keep searching children.
+                self.search_children(node, adt_point)
+                self.search_(self.search_stack.pop())
+                # pop() removes and at the same time return the last element of search_stack.
+
     class Node:
         def __init__(self, level, key, adt_point, aabb):
             self.key = key
@@ -128,8 +190,25 @@ class ADT:
             self.aabb = aabb  # aabb of the region which this node represents.
 
     class ADTPoint:
-        def __init__(self, point):
+        def __init__(self, point, tag):
+            self.point = point
+            self.tag = tag
             self.aabb = AABB(point, self.dim)  # aabb of the element.
+
+        def true_overlap(self, other):
+            # convert list: [[1,2], [3,4], [5,6]] to tuple: [(1,2), (3,4), (5,6)]
+            point_tuple_self = list()
+            for p in self.point:
+                point_tuple_self.append(tuple(p))
+
+            point_tuple_other = list()
+            for p in other.point:
+                point_tuple_other.append(tuple(p))
+
+            poly_self = symgeo.Polygon(point_tuple_self)
+            poly_other = symgeo.Polygon(point_tuple_other)
+
+            return poly_self.intersection(poly_other)
 
 
 
